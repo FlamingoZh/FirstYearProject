@@ -1,0 +1,53 @@
+---
+title: "Process Synsets"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r load-libraries}
+library(tidyverse)
+library(here)
+library(jsonlite)
+```
+
+
+```{r load-relationships, eval = FALSE}
+raw_relationships <- jsonlite::read_json(here("json_dataset/vg/relationships.json"))
+
+get_relationship <- function(elem) {
+  rels <- elem$relationships
+  subjects <- map(rels, ~.x$subject$synsets) %>% as.character()
+  objects <- map(rels, ~.x$object$synsets) %>% as.character()
+  relationships <- map(rels, ~.x$synsets) %>% as.character()
+  
+ tibble(image = elem$image_id,
+        subject = subjects,
+        object = objects,
+        relationship = relationships)
+}
+
+relationships <- map_dfr(raw_relationships, get_relationship) %>%
+  mutate(across(where(is.character), ~str_remove(.x, "list\\(")),
+         across(where(is.character), ~str_remove(.x, "\\)")),
+         across(where(is.character), ~str_remove_all(.x, "\"")))
+
+write_csv(relationships, here("processed_data/vg_relationships.csv"))
+```
+
+```{read-processed_relationships}
+relationships <- read_csv(here("processed_data/vg_relationships.csv")) %>%
+  separate(relationship, into = c("predicate", "pos", "sense"), 
+           sep = "\\.", remove = FALSE)
+
+verbs <- relationships %>%
+  filter(pos == "v", sense == "01", # just first senses
+         !str_detect(predicate, "_")) # no compound verbs
+
+verb_count <- verbs %>%
+  count(relationship) %>%
+  arrange(desc(n))
+
+write_csv(verb_count)
+```
+
