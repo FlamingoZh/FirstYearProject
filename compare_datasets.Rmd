@@ -1,0 +1,12 @@
+---
+  title: "Process Synsets"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+  
+  ```{r load-libraries}
+library(tidyverse)
+library(here)
+library(jsonlite)
+```

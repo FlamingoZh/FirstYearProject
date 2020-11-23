@@ -1,5 +1,5 @@
 ---
-title: "Process Synsets"
+title: "Compare datasets"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -9,45 +9,47 @@ editor_options:
 library(tidyverse)
 library(here)
 library(jsonlite)
+library(janitor)
+library(readxl)
+library(ggthemes)
+
+theme_set(theme_few(base_size = 14))
 ```
 
+```{r read-corpus-data}
+concreteness <- read_csv(here("corpus_data/concreteness.csv")) %>%
+  clean_names() %>%
+  select(word, conc_m) %>%
+  rename(concreteness = conc_m)
 
-```{r load-relationships, eval = FALSE}
-raw_relationships <- jsonlite::read_json(here("json_dataset/vg/relationships.json"))
-
-get_relationship <- function(elem) {
-  rels <- elem$relationships
-  subjects <- map(rels, ~.x$subject$synsets) %>% as.character()
-  objects <- map(rels, ~.x$object$synsets) %>% as.character()
-  relationships <- map(rels, ~.x$synsets) %>% as.character()
-  
- tibble(image = elem$image_id,
-        subject = subjects,
-        object = objects,
-        relationship = relationships)
-}
-
-relationships <- map_dfr(raw_relationships, get_relationship) %>%
-  mutate(across(where(is.character), ~str_remove(.x, "list\\(")),
-         across(where(is.character), ~str_remove(.x, "\\)")),
-         across(where(is.character), ~str_remove_all(.x, "\"")))
-
-write_csv(relationships, here("processed_data/vg_relationships.csv"))
+aoas <- read_xlsx(here("corpus_data/AoA_ratings_Kuperman_et_al_BRM.xlsx")) %>%
+  clean_names() %>%
+  select(word, rating_mean, freq_pm) %>%
+  rename(aoa = rating_mean) %>%
+  mutate(aoa = as.numeric(aoa))
 ```
 
-```{read-processed_relationships}
-relationships <- read_csv(here("processed_data/vg_relationships.csv")) %>%
-  separate(relationship, into = c("predicate", "pos", "sense"), 
-           sep = "\\.", remove = FALSE)
+```{r read-datasets}
+vg_data <- read_csv(here("processed_data/vg_nouns.csv"),
+                    col_names = "word") %>%
+  mutate(data = "vg")
 
-verbs <- relationships %>%
-  filter(pos == "v", sense == "01", # just first senses
-         !str_detect(predicate, "_")) # no compound verbs
-
-verb_count <- verbs %>%
-  count(relationship) %>%
-  arrange(desc(n))
-
-write_csv(verb_count)
+vrd_data <- read_csv(here("processed_data/vrd_nouns.csv"),
+                    col_names = "word") %>%
+  mutate(data = "vrd")
 ```
+
+```{r munge-data}
+data <- bind_rows(vg_data, vrd_data) %>%
+  left_join(concreteness, by = "word") %>%
+  left_join(aoas, by = "word") %>%
+  pivot_longer(cols = c(concreteness, aoa, freq_pm), names_to = "measure")
+```
+
+```{r compare-datasets, fig.width = 8, fig.height = 4}
+ggplot(data, aes(x = data, y = value)) + 
+  geom_boxplot() +
+  facet_wrap(~measure, scales = "free")
+```
+
 
