@@ -1,0 +1,71 @@
+```{r}
+library(reticulate)
+library(tidyverse)
+library(janitor)
+library(tidyboot)
+library(ggthemes)
+
+theme_set(theme_few(base_size = 16))
+```
+
+
+```{r load-data}
+vrd_nouns <- py_load_object("data/pkl_file/vrd_noun_25samples_10blocks.pkl")
+vrd_verbs <- py_load_object("data/pkl_file/vrd_verb_25samples_10blocks.pkl")
+vg_nouns <- py_load_object("data/pkl_file/vg_noun_freq_greater_than_10_25samples_10iter.pkl")
+vg_verbs <- py_load_object("data/pkl_file/vg_verb_25samples_10iter.pkl")
+```
+
+```{r pull-meausures}
+pull_measures <- function(elem) {
+   
+  words <- elem[[1]]$vocab_intersect
+  
+  # glove <- elem[[1]]$z_1 %>%
+  #   as_tibble() %>%
+  #   clean_names() %>%
+  #   mutate(word = words) %>%
+  #   pivot_longer(-word, names_to = "glove_feature")
+  
+  swav <- map_dfr(elem, ~.x$z_0 %>%
+    as_tibble() %>%
+    clean_names() %>%
+    mutate(word = words) %>%
+    pivot_longer(-word, names_to = "swav_feature"),
+    .id = "sample")
+  
+  return(swav)
+}
+
+vrd_noun_features <- map_dfr(vrd_nouns, pull_measures, .id = "rep")
+vrd_verb_features <- map_dfr(vrd_verbs, pull_measures, .id = "rep")
+
+vg_noun_features <- map_dfr(vg_nouns, pull_measures, .id = "rep")
+vg_verb_features <- map_dfr(vg_verbs, pull_measures, .id = "rep")
+```
+
+```{r average-sd}
+get_average_sd <- function(df) {
+  df %>%
+    unite(sample, rep, sample, sep = "_") %>%
+    group_by(word, swav_feature) %>%
+    summarise(sd = sd(value)) %>%
+    summarise(sd = mean(sd)) %>%
+    tidyboot_mean(sd)
+}
+
+datasets <- list("vrd_noun" = vrd_noun_features, "vrd_verb" = vrd_verb_features,
+                 "vg_noun" = vg_noun_features, "vg_verb" = vg_verb_features)
+
+average_sds <- map_dfr(datasets, get_average_sd) %>%
+  mutate(dataset = names(datasets)) %>%
+  separate(dataset, into = c("dataset", "type"), sep = "_")
+```
+
+```{r plot-sds}
+ggplot(average_sds, aes(x = type, y = mean)) + 
+  geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper)) + 
+  facet_wrap(~ dataset) +
+  labs(x = "", y = "sd")
+
+```
