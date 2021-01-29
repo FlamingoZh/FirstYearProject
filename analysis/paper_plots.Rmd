@@ -1,0 +1,74 @@
+```{r load-libaries}
+library(tidyverse)
+library(ggthemes)
+library(here)
+library(tidyboot)
+
+theme_set(theme_few(base_size = 14))
+```
+
+```{r load-data}
+variances <- read_csv(here("analysis/data/data_variances.csv")) %>%
+  rename(concept = key) %>%
+  separate(split, into = c("dataset", "type"), sep = "_") 
+
+d_primes <- read_csv(here("analysis/data/data_d_prime.csv")) %>%
+  rename(distance = numerator, variance = denominator,
+         concept1 = key1, concept2 = key2) %>%
+  separate(split, into = c("dataset", "type"), sep = "_") %>%
+  pivot_longer(cols = c(distance, variance, d_prime), names_to = "measure")
+
+dataset_samples <- c(here("analysis/data/data_aggregated_image_vrd.csv"),
+                     here("analysis/data/data_aggregated_image_vg.csv"))
+
+learn_from_sample <- map_dfr(dataset_samples, read_csv) %>%
+  rename(correct = percentage) %>%
+  separate(split, into = c("dataset", "type"), sep = "_") %>%
+  group_by(dataset, type, n_image) %>%
+  mutate(sample = 1:n())
+
+booted_learn_from_sample <- learn_from_sample %>%
+  group_by(n_image, dataset, type) %>%
+  tidyboot_mean(correct) %>%
+  rename(correct = empirical_stat)
+  
+
+```
+
+```{r plot-variances}
+ggplot(variances %>% filter(dataset == "vg"),
+       aes(x = type, y = variance)) + 
+  geom_violin()
+
+```
+
+```{r plot-dprime}
+ggplot(d_primes %>% filter(dataset == "vg"), 
+       aes(x = type, y = value)) + 
+  facet_wrap(~ measure, scales = "free") +
+  geom_violin()
+```
+
+```{r}
+sample_annotations <- tibble(n_image = c(8, 8),
+                             correct = c(1.02, .95),
+                             type = c("noun", "verb"),
+                             annotation = c("nouns", "verbs"),
+                             dataset = c("vrd", "vrd"))
+
+ggplot(booted_learn_from_sample, 
+       aes(x = n_image, y = correct, color = type, fill = type)) + 
+  facet_wrap(~ dataset) +
+  geom_smooth(span = 1,
+              data = learn_from_sample) +
+  geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper)) + 
+  scale_color_ptol() + 
+  scale_fill_ptol() + 
+  theme(legend.position = "none") +
+  geom_text(aes(label = annotation), data = sample_annotations,
+            size = 5) +
+  labs(x = "# instances per category", y = "alignment") +
+  geom_hline(aes(yintercept = 1), linetype = "dashed")
+  
+correct_lm <- glm(correct ~ n_image * type, data = learn_from_sample)  
+```

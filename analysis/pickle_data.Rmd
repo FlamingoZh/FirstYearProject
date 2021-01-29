@@ -4,16 +4,22 @@ library(tidyverse)
 library(janitor)
 library(tidyboot)
 library(ggthemes)
+library(here)
+library(grt)
 
 theme_set(theme_few(base_size = 16))
 ```
 
 
 ```{r load-data}
-vrd_nouns <- py_load_object("data/pkl_file/vrd_noun_25samples_10blocks.pkl")
-vrd_verbs <- py_load_object("data/pkl_file/vrd_verb_25samples_10blocks.pkl")
-vg_nouns <- py_load_object("data/pkl_file/vg_noun_freq_greater_than_10_25samples_10iter.pkl")
-vg_verbs <- py_load_object("data/pkl_file/vg_verb_25samples_10iter.pkl")
+vrd_nouns <- py_load_object(
+  here("analysis/data/pkl_file/vrd_noun_25samples_10blocks.pkl"))
+vrd_verbs <- py_load_object(
+  here("analysis/data/pkl_file/vrd_verb_25samples_10blocks.pkl"))
+vg_nouns <- py_load_object(
+  here("analysis/data/pkl_file/vg_noun_freq_greater_than_10_25samples_10iter.pkl"))
+vg_verbs <- py_load_object(
+  here("analysis/data/pkl_file/vg_verb_25samples_10iter.pkl"))
 ```
 
 ```{r pull-meausures}
@@ -54,18 +60,75 @@ get_average_sd <- function(df) {
     tidyboot_mean(sd)
 }
 
+
+get_distances <- function(df) {
+  united_df <- df %>%
+    unite(sample, rep, sample, sep = "_")
+  
+  mean_df <- united_df %>%
+    group_by(word, swav_feature) %>%
+    summarise(mean = mean(value))
+  
+  united_df %>%
+    left_join(mean_df, by = c("word", "swav_feature")) %>%
+    mutate(diff = (value - mean)^2) %>%
+    group_by(word, sample) %>%
+    summarise(diff = sqrt(sum(diff))) %>% 
+    summarise(diff = mean(diff)) %>%
+    tidyboot_mean(diff)
+}
+
+airplane <- vrd_noun_features %>%
+  filter(word == "airplane") %>% 
+  pivot_wider(names_from = "swav_feature", values_from = "value") %>%
+  select(-rep, -sample, -word) %>%
+  as.matrix()
+
+car <- vrd_noun_features %>%
+  filter(word == "car") %>% 
+  pivot_wider(names_from = "swav_feature", values_from = "value") %>%
+  select(-rep, -sample, -word) %>%
+  as.matrix()
+
+
+get_d_prime <- function(df) {
+  united_df <- df %>%
+    unite(sample, rep, sample, sep = "_")
+  
+  mean_df <- united_df %>%
+    group_by(word, swav_feature) %>%
+    summarise(mean = mean(value))
+  
+  united_df %>%
+    left_join(mean_df, by = c("word", "swav_feature")) %>%
+    mutate(diff = (value - mean)^2) %>%
+    group_by(word, sample) %>%
+    summarise(diff = sqrt(sum(diff))) %>% 
+    summarise(diff = mean(diff)) %>%
+    tidyboot_mean(diff)
+}
+
 datasets <- list("vrd_noun" = vrd_noun_features, "vrd_verb" = vrd_verb_features,
                  "vg_noun" = vg_noun_features, "vg_verb" = vg_verb_features)
 
 average_sds <- map_dfr(datasets, get_average_sd) %>%
   mutate(dataset = names(datasets)) %>%
   separate(dataset, into = c("dataset", "type"), sep = "_")
+
+distances <- map_dfr(datasets, get_distances) %>%
+  mutate(dataset = names(datasets)) %>%
+  separate(dataset, into = c("dataset", "type"), sep = "_")
 ```
 
 ```{r plot-sds}
-ggplot(average_sds, aes(x = type, y = mean)) + 
+ggplot(average_sds, aes(x = type, y = empirical_stat)) + 
   geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper)) + 
   facet_wrap(~ dataset) +
   labs(x = "", y = "sd")
+
+ggplot(distances, aes(x = type, y = empirical_stat)) + 
+  geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper)) + 
+  facet_wrap(~ dataset) +
+  labs(x = "", y = "distance")
 
 ```
